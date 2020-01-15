@@ -11,16 +11,15 @@ slack = Slacker(tokens.SLACK_BOT)
 notify_ch = 'wiki通知'
 notify_renraku_ch = 'wiki通知_連絡事項'
 
-def notify(message):
-    slack.chat.post_message(notify_ch, message, as_user=True)
-
-def renraku(message):
-    slack.chat.post_message(notify_renraku_ch, message, as_user=True)
+def notify(ch, update):
+    msg = f'{update.title} {update.link}'
+    slack.chat.post_message(msg, message, as_user=True)
 
 class Update:
-    def __init__(self, title, date):
+    def __init__(self, title, date, link):
         self.title = title
         self.date = date
+        self.link = link
 
 def get_updates():
     url = 'http://www2.teu.ac.jp/kiku/wiki/?RecentChanges'
@@ -33,7 +32,8 @@ def get_updates():
     for e in soup.select('#body li'):
         date_str = re.sub(' \(.\) ', ' ', e.next)
         date = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S - ')
-        data.append(Update(e.find('a').text, date))
+        a = e.find('a')
+        data.append(Update(a.text, date, a.get('href')))
     return data
 
 def get_importants():
@@ -46,7 +46,7 @@ def get_ignores():
         data = f.read().split('\n')[:-1]
     return data
 
-# last = datetime(2020, 1, 11)
+# last = datetime(2020, 1, 14)
 last = datetime.now()
 while True:
     sleep(1)
@@ -56,7 +56,7 @@ while True:
         last = updates[0].date
         for v in updates[::-1]:
             if v.title not in get_ignores():
-                notify(v.title)
+                notify(notify_ch, v)
 
             if v.title.endswith('連絡事項') or v.title in get_importants():
-                renraku(v.title)
+                notify(notify_renraku_ch, v)
