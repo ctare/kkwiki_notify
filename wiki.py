@@ -12,7 +12,7 @@ notify_ch = 'wiki通知'
 notify_renraku_ch = 'wiki通知_連絡事項'
 
 def notify(ch, update):
-    message = f'{update.title} {update.link}'
+    message = f'<{update.link}|{update.title}>'
     slack.chat.post_message(ch, message, as_user=True)
 
 class Update:
