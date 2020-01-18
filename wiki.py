@@ -1,6 +1,7 @@
 import requests
 from datetime import datetime
 from bs4 import BeautifulSoup
+import bs4
 import re
 import tokens
 from time import sleep
@@ -10,10 +11,12 @@ from slacker import Slacker
 slack = Slacker(tokens.SLACK_BOT)
 notify_ch = 'wiki通知'
 notify_renraku_ch = 'wiki通知_連絡事項'
+base_url = 'http://www2.teu.ac.jp/kiku/wiki/'
+auth = {'Authorization': tokens.WIKI}
 
-def notify(ch, update):
+def notify(ch, update, attachments=None):
     message = f'<{update.link}|{update.title}>'
-    slack.chat.post_message(ch, message, as_user=True)
+    slack.chat.post_message(ch, message, attachments=attachments, as_user=True)
 
 class Update:
     def __init__(self, title, date, link):
@@ -22,8 +25,7 @@ class Update:
         self.link = link
 
 def get_updates():
-    url = 'http://www2.teu.ac.jp/kiku/wiki/?RecentChanges'
-    auth = {'Authorization': tokens.WIKI}
+    url = f'{base_url}?RecentChanges'
     response = requests.get(url, headers=auth)
 
     soup = BeautifulSoup(response.text, 'html.parser')
@@ -46,7 +48,48 @@ def get_ignores():
         data = f.read().split('\n')[:-1]
     return data
 
+class DiffElm:
+    remove_class = 'diff_removed'
+    added_class = 'diff_added'
+    colors = {remove_class: '#f00', added_class: 'good'}
+
+    def __init__(self, elm):
+        self.elm = elm
+        self.diff_type = elm.get('class')[0]
+        self.text = elm.text
+
+    @staticmethod
+    def selector():
+        return f'pre .{DiffElm.remove_class}, pre .{DiffElm.added_class}'
+
 # last = datetime(2020, 1, 14)
+# updates = list(filter(lambda x: x.date > last, get_updates()))
+
+def get_diffs(update):
+    page = update.link[update.link.index('?') + 1:]
+    url = f'{base_url}?cmd=diff&page={page}'
+    response = requests.get(url, headers=auth)
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    block = []
+    sequence = []
+    for elm in soup.find('pre').children:
+
+        if isinstance(elm, bs4.NavigableString):
+            if len(elm) != 1 and sequence:
+                block.append(sequence)
+                sequence = []
+        else:
+            e = DiffElm(elm)
+            if sequence and sequence[0].diff_type != e.diff_type:
+                block.append(sequence)
+                sequence = [e]
+            else:
+                sequence.append(e)
+
+    return block
+
+# last = datetime(2020, 1, 18)
 last = datetime.now()
 while True:
     sleep(1)
@@ -59,4 +102,10 @@ while True:
                 notify(notify_ch, v)
 
             if v.title.endswith('連絡事項') or v.title in get_importants():
-                notify(notify_renraku_ch, v)
+                block = get_diffs(v)
+                attachments = [{
+                    "color": DiffElm.colors[v[0].diff_type],
+                    "text": "\n".join(map(lambda x: x.text, v)),
+                } for v in block]
+
+                notify(notify_renraku_ch, v, attachments=attachments)
