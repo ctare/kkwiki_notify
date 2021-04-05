@@ -14,9 +14,19 @@ notify_renraku_ch = 'wiki通知_連絡事項'
 base_url = 'http://www2.teu.ac.jp/kiku/wiki/'
 auth = {'Authorization': tokens.WIKI}
 
+# 通知処理の本体
+# notifyを参考にしつつ別媒体を追加していく
 def notify(ch, update, attachments=None):
+    """
+    Args: (ch: 投稿するchannel, update: 投稿内容, attachments: slackのoption)
+    Return: None
+    """
+
     message = f'<{update.link}|{update.title}>'
     slack.chat.post_message(ch, message, attachments=attachments, as_user=True)
+
+def notify_XXX(ch, update, attachments=None):
+    pass
 
 class Update:
     def __init__(self, title, date, link):
@@ -89,20 +99,30 @@ def get_diffs(update):
 
     return block
 
+# ------------- main process -------------
 # last = datetime(2020, 1, 18)
 last = datetime.now()
 while True:
-    sleep(1)
+    sleep(1) # 取得間隔
     updates = list(filter(lambda x: x.date > last, get_updates()))
 
     if updates:
         last = updates[0].date
         for v in updates[::-1]:
             if v.title not in get_ignores():
+                # 大事じゃない連絡通知
+
+                # 通知処理
+                # 通知媒体の変更・追加はnotifyを参照
                 notify(notify_ch, v)
 
             if v.title.endswith('連絡事項') or v.title in get_importants():
+                # 大事な連絡通知
+
                 block = get_diffs(v)
+
+                # 通知処理 軽い装飾を添えて
+                # 通知媒体の変更・追加はnotifyを参照
                 attachments = [{
                     "color": DiffElm.colors[v[0].diff_type],
                     "text": "\n".join(map(lambda x: x.text, v)),
